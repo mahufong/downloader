@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
-from test_download import DEST_DIR
-import websockets
-import time
 import json
-import asyncio
+import threading
+import time
+from functools import partial
+from queue import Queue
+from threading import Thread
+import os 
+
+import websocket
 
 import downloader
+from downloader import DEST_DIR
 
 #SERVER = 'ws://192.168.9.113:5555'
 SERVER = 'ws://192.168.10.20:5555'
@@ -25,13 +30,12 @@ PERSONAL_INFO = 6500
 DEBUG_SWITCH = 6000
 PERSONAL_DETAIL = 6550
 DESTROY_ALL = 9999
+ATTATCH_FILE = 5003
 
 
 # def getid():
 #     id = int(time.time() * 1000)
 #     return id
-loader = downloader.downloader()
-event = asyncio.Event()
 
 
 def getid():
@@ -110,14 +114,26 @@ def destroy_all():
     s = json.dumps(qs)
     return s
 
+def send_attatch(wxid, con,roomid=''):
+    qs = {
+        'id': getid(),
+        'type': ATTATCH_FILE,
+        'content': con,
+        'wxid': wxid,
+        'roomid': roomid,
+        'nickname': '',
+        'ext': '',
+    }
+    s = json.dumps(qs)
+    return s
 
-def send_pic_msg(wxid, con):
+def send_pic_msg(wxid, con,roomid=''):
     qs = {
         'id': getid(),
         'type': PIC_MSG,
         'content': con,
         'wxid': wxid,
-        'roomid': '',
+        'roomid': roomid,
         'nickname': '',
         'ext': '',
     }
@@ -209,15 +225,27 @@ def handle_recv_msg(j):
 
 
 def heartbeat(j):
-    print(j['content'])
+    #print(j['content'])
+    pass
 
 
-def on_open(ws):
-    ws.send(send_wxuser_list())     # 获取微信通讯录好友列表
-#    ws.send(send_txt_msg())     # 向你的好友发送微信文本消息
+def on_open(ws, result: Queue):
+    def run(*arg):
+        ws.send(send_wxuser_list())     # 获取微信通讯录好友列表
+        while True:
+            task_rsp = result.get()
+            print("get one respone : ",task_rsp)
+            
+            path = os.path.abspath(os.path.join(DEST_DIR,task_rsp['result']))
+            sdata = send_attatch("21245374923@chatroom", path)
+            ws.send(sdata)
+            result.task_done()  
+    Thread(target=run).start()
+
+    # ws.send(send_txt_msg())     # 向你的好友发送微信文本消息
 
 
-def on_message(message):
+def on_message(ws,message):
     # print(ws)
     j = json.loads(message)
     # print(j)
@@ -240,7 +268,6 @@ def on_message(message):
         GET_USER_LIST_FAIL: handle_wxuser_list,
     }
     ret = action.get(resp_type, print)(j)
-    print("on_message ", ret)
     return ret
 
 
@@ -254,34 +281,38 @@ def on_close(ws):
     print("closed")
 
 
-async def main(websocket):
-    # async with websockets.connect(SERVER) as websocket:
-    while True:
-        rdata = await websocket.recv()
-        wxid = on_message(rdata)
-        print("main wxid", wxid)
-        #await deal_result(wxid, websocket)
+# async def main(websocket):
+#     # async with websockets.connect(SERVER) as websocket:
+#     while True:
+#         rdata = await websocket.recv()
+#         wxid = on_message(rdata)
+#         print("main wxid", wxid)
+#         #await deal_result(wxid, websocket)
 
 
-async def deal_result(websocket):
-    while True:
-        await event.wait()
-        if not loader.result.empty():
-            ret = loader.result.get()
-            wxid = ert['creater']
-            print("deal ", wxid)
-            file_url = DEST_DIR + ret['result']
-            rdata = send_pic_msg(wxid, file_url)
-            print("send : ", rdata)
-            await websocket.send(rdata)
-            loader.result.task_done()
-        else:
-            event.clear()
+# async def deal_result(websocket):
+#     while True:
+#         if not loader.result.empty():
+#             ret = loader.result.get()
+#             wxid = ret['creater']
+#             print("deal ", wxid)
+#             file_url = DEST_DIR + ret['result']
+#             rdata = send_pic_msg(wxid, file_url)
+#             print("send : ", rdata)
+#             await websocket.send(rdata)
+#             loader.result.task_done()
+#         asyncio.sleep(1)
 
 
 if __name__ == "__main__":
 
-    # asyncio.run(main())
-    ll=websockets.connect(SERVER)
+    loader = downloader.downloader()
 
-        # ws.run_forever()
+    websocket.enableTrace(True)
+    on_open = partial(on_open,result = loader.result)
+    ws = websocket.WebSocketApp(SERVER,
+                                on_open=on_open,
+                                on_message=on_message,
+                                on_error=on_error,
+                                on_close=on_close)
+    ws.run_forever()

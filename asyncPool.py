@@ -16,6 +16,7 @@ import threading
 import time
 from queue import Queue
 from threading import Thread
+from functools import partial
 
 import aiohttp
 
@@ -155,20 +156,13 @@ class AsyncPool(object):
         # 限制并发量为500
         # asyncio.Semaphore(maxsize) 会默认获取当前循环
         # 在这个上下文中 它应该阻塞 新线程中的任务
-        #self.semaphore = asyncio.Semaphore(maxsize)
+        # self.semaphore = asyncio.Semaphore(maxsize)
         self.semaphore = self._set_concurrent(maxsize)
 
-        self.task_id = MySnow(datacenter_id, worker_id)
+        # 结果队列 用于存储 任务的结果
+        self.result_queue = Queue()
 
-    @staticmethod
-    def set_cerater(name: str):
-        def set_name(func):
-            def inner(*args, **kv):
-                print('...记录日志...visitor is %s' % name)
-                ret = func(*args, **kv)
-                return name, ret
-            return inner
-        return set_name
+        self.task_id = MySnow(datacenter_id, worker_id)
 
     def task_add(self, item=1):
         """
@@ -178,15 +172,16 @@ class AsyncPool(object):
         """
         self.task.put(item)
 
-    def task_done(self, fn):
+    def task_done(self, fn,need):
         """
         任务完成
         回调函数
         :param fn:
+        :param need: 是否需要结果
         :return:
         """
-        if fn:
-            pass
+        if fn and need:
+            self.result_queue.put(fn.result())
         self.task.get()
         self.task.task_done()
 
@@ -295,7 +290,7 @@ class AsyncPool(object):
             ret = await func
             return {"id": id, "creater": creater, "result": ret}
 
-    def submit(self, func, callback=None, creater=None):
+    def submit(self, func, callback=None, creater=None,need=True):
         """
         提交任务到事件循环
         :param func: 异步函数对象
@@ -311,8 +306,7 @@ class AsyncPool(object):
 
         # 添加回调函数,添加顺序调用
         future.add_done_callback(callback)
-        future.add_done_callback(self.task_done)
-
+        future.add_done_callback(partial(self.task_done,need=need))
 
 async def thread_example(i):
     url = f"http://127.0.0.1:8080/app04/async4?num={i}"
@@ -333,7 +327,7 @@ def main():
     pool = AsyncPool(maxsize=10)
 
     # 插入任务任务
-    for i in range(3):
+    for i in range(10):
         pool.submit(get_url(API_URL), my_callback)
 
     print("等待子线程结束1...")
@@ -345,6 +339,7 @@ def main():
     print("等待子线程结束2...")
     # 等待
     pool.wait()
+    print("结果队列 : ",pool.result_queue.qsize())
 
     print("等待子线程结束3...")
 

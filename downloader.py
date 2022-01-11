@@ -1,7 +1,7 @@
 """
  * @2022-01-07 17:34:46
  * @Author       : mahf
- * @LastEditTime : 2022-01-10 20:09:03
+ * @LastEditTime : 2022-01-11 19:15:52
  * @FilePath     : /downloader/downloader.py
  * @Copyright 2022 mahf, All Rights Reserved.
 """
@@ -32,7 +32,7 @@ class downloader(object):
         self.pool = AsyncPool(5)
 
         #结果队列
-        self.result = Queue()
+        self.result = self.pool.result_queue
 
     def shutdown(self):
         self.pool.release()
@@ -94,7 +94,6 @@ class downloader(object):
 
     def my_callback(self, fn: Future):
         print("完成 : ", fn.result())
-        self.result.put(fn.result())
 
     def add_download_job(self, fn: Future):
         ret = fn.result()
@@ -106,12 +105,13 @@ class downloader(object):
         self.pool.submit(self.fetch(url, path, flag), self.my_callback,creater)
 
     def download_once(self,creater):
-        self.pool.submit(self.get_url(API_URL), self.add_download_job,creater)
+        self.pool.submit(self.get_url(API_URL), self.add_download_job,creater,False)
 
 
 if __name__ == "__main__":
     loader = downloader()
-    for i in range(10):
+    for i in range(2):
         loader.download_once(f"sdf : {i}")
-
     loader.shutdown()
+    print(loader.result.qsize())
+
