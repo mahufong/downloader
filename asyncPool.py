@@ -295,6 +295,8 @@ class AsyncPool(object):
         提交任务到事件循环
         :param func: 异步函数对象
         :param callback: 回调函数
+        :param creater : 任务创建者
+        :param need : 是否需要结果
         :return:
         """
         self.task_add()

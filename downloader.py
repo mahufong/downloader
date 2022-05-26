@@ -1,7 +1,7 @@
 """
  * @2022-01-07 17:34:46
  * @Author       : mahf
- * @LastEditTime : 2022-01-11 19:15:52
+ * @LastEditTime : 2022-05-26 12:55:55
  * @FilePath     : /downloader/downloader.py
  * @Copyright 2022 mahf, All Rights Reserved.
 """
@@ -71,6 +71,7 @@ class downloader(object):
             return flag
 
     async def download(self, url_list: List):
+        """参考 弃用"""
         tasks = []
         start = time.time()
         async with aiohttp.ClientSession() as session:
